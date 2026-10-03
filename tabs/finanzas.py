@@ -7,7 +7,6 @@ import plotly.express as px
 import os
 import subprocess
 
-# Función para asegurar que el navegador invisible esté disponible en Streamlit Cloud
 @st.cache_resource
 def instalar_navegador():
     try:
@@ -45,46 +44,44 @@ def mostrar():
             
             try:
                 with sync_playwright() as p:
-                    # Lanzar navegador en modo invisible
                     browser = p.chromium.launch(headless=True)
                     page = browser.new_page()
                     
-                    # 1. Ir a la página principal de Condovive
                     page.goto("https://app.condovive.com/")
-                    
-                    # 2. Llenar los campos de usuario y contraseña (tomados de Secrets)
                     page.fill("input[type='email'], input[name='email'], input[name='username']", st.secrets["CONDOVIVE_USER"])
                     page.fill("input[type='password'], input[name='password']", st.secrets["CONDOVIVE_PASS"])
                     
-                    # 3. Hacer clic en el botón de acceso y esperar a que cargue
                     page.click("button[type='submit'], input[type='submit']")
                     page.wait_for_load_state("networkidle")
                     
-                    # 4. Navegar directo al reporte financiero del mes seleccionado
                     url_reporte = f"https://app.condovive.com/a/eggrld/s/estadoderesultados?m={mes_seleccionado:02d}&a={anio_seleccionado}&presupuesto="
                     page.goto(url_reporte)
-                    
-                    # Pausa breve para asegurar que renderice la tabla completa por JavaScript
                     page.wait_for_timeout(4000)
                     
-                    # Extraer el contenido HTML de la página ya autenticada
                     html_resultado = page.content()
                     browser.close()
                 
-                # Procesar la información con Pandas
                 if html_resultado:
                     tablas = pd.read_html(StringIO(html_resultado)) 
                     
                     if len(tablas) >= 2:
+                        # Procesar Ingresos de forma dinámica
                         df_ingresos = tablas[0].copy()
-                        df_ingresos.columns = ["Concepto", "Monto"]
-                        df_ingresos = df_ingresos[df_ingresos["Concepto"] != "Subtotal"]
-                        df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"], errors="coerce").fillna(0)
+                        cols_ing = list(df_ingresos.columns)
+                        cols_ing[0] = "Concepto"
+                        cols_ing[-1] = "Monto"
+                        df_ingresos.columns = cols_ing
+                        df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
+                        df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
                         
+                        # Procesar Egresos de forma dinámica
                         df_egresos = tablas[1].copy()
-                        df_egresos.columns = ["Concepto", "Monto"]
-                        df_egresos = df_egresos[df_egresos["Concepto"] != "Subtotal"]
-                        df_egresos["Monto"] = pd.to_numeric(df_egresos["Monto"], errors="coerce").fillna(0)
+                        cols_eg = list(df_egresos.columns)
+                        cols_eg[0] = "Concepto"
+                        cols_eg[-1] = "Monto"
+                        df_egresos.columns = cols_eg
+                        df_egresos = df_egresos[~df_egresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
+                        df_egresos["Monto"] = pd.to_numeric(df_egresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
 
                         total_ingresos = df_ingresos["Monto"].sum()
                         total_egresos = df_egresos["Monto"].sum()
@@ -112,6 +109,6 @@ def mostrar():
                             fig_balance = px.bar(df_balance, x="Categoría", y="Monto", color="Categoría", color_discrete_sequence=["#28a745", "#dc3545"], text_auto='.2s')
                             st.plotly_chart(fig_balance, use_container_width=True)
                     else:
-                        st.warning("El inicio de sesión fue exitoso, pero no se detectaron las tablas financieras en la página.")
+                        st.warning("La sesión se estableció, pero no se detectaron las tablas financieras esperadas.")
             except Exception as e:
                 st.error(f"Error en la automatización: {e}")
