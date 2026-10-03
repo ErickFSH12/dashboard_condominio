@@ -73,6 +73,8 @@ def mostrar():
                                 with tabs_datos[i]:
                                     st.write(f"**Estructura cruda de la Tabla {i+1}**")
                                     st.dataframe(tabla, use_container_width=True)
+                                    # Genera un cuadro de texto fácil de copiar
+                                    st.code(tabla.to_csv(index=False))
                     except ValueError:
                         st.error("No se detectaron tablas financieras.")
                         st.warning("⚠️ Diagnóstico: Esto es lo que Condovive respondió realmente. Revisa si es la pantalla de Login (Cookie expirada) o un formato distinto.")
