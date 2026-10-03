@@ -59,12 +59,20 @@ def mostrar():
                         st.json(datos_json)
                         
                 except json.JSONDecodeError:
-                    # 2. Si no es JSON, intentar extraer tabla HTML
+                    # 2. Si no es JSON, intentar extraer tablas HTML
                     try:
-                        tablas = pd.read_html(StringIO(respuesta.text)) # Corrección aplicada aquí
+                        tablas = pd.read_html(StringIO(respuesta.text)) 
                         if tablas:
-                            st.success(f"Datos obtenidos exitosamente: {fecha_inicio} al {fecha_fin}")
-                            st.dataframe(tablas[0], use_container_width=True)
+                            st.success(f"Datos obtenidos exitosamente: {fecha_inicio} al {fecha_fin}. Se encontraron {len(tablas)} tablas.")
+                            
+                            # Crear sub-pestañas automáticas para cada tabla que encuentre
+                            nombres_tabs = [f"Sección {i+1}" for i in range(len(tablas))]
+                            tabs_datos = st.tabs(nombres_tabs)
+                            
+                            for i, tabla in enumerate(tablas):
+                                with tabs_datos[i]:
+                                    st.write(f"**Estructura cruda de la Tabla {i+1}**")
+                                    st.dataframe(tabla, use_container_width=True)
                     except ValueError:
                         st.error("No se detectaron tablas financieras.")
                         st.warning("⚠️ Diagnóstico: Esto es lo que Condovive respondió realmente. Revisa si es la pantalla de Login (Cookie expirada) o un formato distinto.")
