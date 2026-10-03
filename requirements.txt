@@ -2,4 +2,6 @@ streamlit
 pandas
 streamlit-calendar
 lxml
+html5lib
+beautifulsoup4
 requests
