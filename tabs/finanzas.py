@@ -34,7 +34,6 @@ def mostrar():
 
     st.divider()
 
-    # Inicializar el registro de logs en la sesión si no existe
     if "log_auditoria" not in st.session_state:
         st.session_state.log_auditoria = []
 
@@ -44,7 +43,7 @@ def mostrar():
         st.session_state.log_auditoria.append(entrada)
 
     if btn_consultar:
-        st.session_state.log_auditoria = []  # Limpiar logs anteriores en cada consulta nueva
+        st.session_state.log_auditoria = []
         registrar_log("🚀 Iniciando proceso de consulta financiera.")
         
         _, ultimo_dia = calendar.monthrange(anio_seleccionado, mes_seleccionado)
@@ -55,7 +54,7 @@ def mostrar():
         
         try:
             with sync_playwright() as p:
-                registrar_log("🌐 Lanzando navegador Chromium en modo headless...")
+                registrar_log("🌐 Lanzando navegador Chromium...")
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 
@@ -75,8 +74,9 @@ def mostrar():
                 registrar_log(f"📂 Navegando directamente al reporte: {url_reporte}")
                 page.goto(url_reporte)
                 
-                registrar_log("⏳ Esperando renderizado de la tabla (4 segundos)...")
-                page.wait_for_timeout(4000)
+                # Aumentamos el tiempo de espera a 8 segundos para asegurar que el AJAX/JS cargue los montos
+                registrar_log("⏳ Esperando carga completa de datos asíncronos (8 segundos)...")
+                page.wait_for_timeout(8000)
                 
                 html_resultado = page.content()
                 registrar_log(f"📥 HTML extraído correctamente ({len(html_resultado)} caracteres).")
@@ -94,21 +94,27 @@ def mostrar():
                     cols_ing[0] = "Concepto"
                     cols_ing[-1] = "Monto"
                     df_ingresos.columns = cols_ing
-                    df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
-                    df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
                     
                     df_egresos = tablas[1].copy()
                     cols_eg = list(df_egresos.columns)
                     cols_eg[0] = "Concepto"
                     cols_eg[-1] = "Monto"
                     df_egresos.columns = cols_eg
+                    
+                    # Registrar un extracto de lo que se leyó antes de limpiar para auditoría
+                    registrar_log(f"📋 Muestra Tabla Ingresos Cruda:\n{df_ingresos.head(3).to_string()}")
+                    registrar_log(f"📋 Muestra Tabla Egresos Cruda:\n{df_egresos.head(3).to_string()}")
+
+                    df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
+                    df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
+                    
                     df_egresos = df_egresos[~df_egresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
                     df_egresos["Monto"] = pd.to_numeric(df_egresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
 
                     total_ingresos = df_ingresos["Monto"].sum()
                     total_egresos = df_egresos["Monto"].sum()
                     flujo_neto = total_ingresos - total_egresos
-                    registrar_log("✨ Limpieza de datos y cálculos financieros completados exitosamente.")
+                    registrar_log(f"✨ Totales calculados -> Ingresos: {total_ingresos}, Egresos: {total_egresos}")
 
                     st.subheader(f"📊 Resumen del Mes ({fecha_inicio} al {fecha_fin})")
                     kpi1, kpi2, kpi3 = st.columns(3)
@@ -133,13 +139,11 @@ def mostrar():
                         st.plotly_chart(fig_balance, use_container_width=True)
                 else:
                     registrar_log("⚠️ Advertencia: No se encontraron al menos 2 tablas financieras válidas.")
-                    st.warning("La sesión se estableció, pero no se detectaron las tablas financieras esperadas.")
         except Exception as e:
             error_detalle = traceback.format_exc()
             registrar_log(f"❌ ERROR CRÍTICO: {str(e)}")
             st.error(f"Error en la automatización: {e}")
 
-    # Mostrar siempre el panel de auditoría expandible al fondo de la pestaña de Finanzas
     st.divider()
     with st.expander("🛠️ Panel de Auditoría y Logs del Sistema", expanded=False):
         if st.session_state.log_auditoria:
