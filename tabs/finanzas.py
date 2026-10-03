@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
+import requests
 from io import StringIO
 import datetime
 import calendar
 import plotly.express as px
-from playwright.sync_api import sync_playwright
 
 def mostrar():
-    st.header("📈 Dashboard Financiero (Automatizado)")
-    st.info("Conectado mediante navegador fantasma a Condovive (Sin expiración de cookies)")
+    st.header("📈 Dashboard Financiero (Condovive)")
+    st.info("Conexión automática autenticada por API")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -22,54 +22,57 @@ def mostrar():
     st.divider()
 
     if btn_consultar:
-        with st.spinner("🤖 Iniciando sesión automática en Condovive y extrayendo datos..."):
-            
-            _, ultimo_dia = calendar.monthrange(anio_seleccionado, mes_seleccionado)
-            fecha_inicio = f"{anio_seleccionado}-{mes_seleccionado:02d}-01"
-            fecha_fin = f"{anio_seleccionado}-{mes_seleccionado:02d}-{ultimo_dia}"
-            
-            html_resultado = None
+        with st.spinner("🔄 Autenticando y extrayendo información financiera..."):
             
             try:
-                # Abrir navegador invisible con Playwright
-                with sync_playwright() as p:
-                    # headless=True significa que corre de forma invisible en la nube
-                    browser = p.chromium.launch(headless=True)
-                    page = browser.new_page()
-                    
-                    # 1. Ir a la página de login
-                    page.goto("https://app.condovive.com/")
-                    
-                    # 2. Rellenar credenciales (ajusta los selectores si es necesario)
-                    # Nota: Buscamos campos de correo/usuario y contraseña estándar
-                    page.fill("input[type='email'], input[name='email'], input[name='username']", st.secrets["CONDOVIVE_USER"])
-                    page.fill("input[type='password'], input[name='password']", st.secrets["CONDOVIVE_PASS"])
-                    
-                    # 3. Dar clic en el botón de entrar y esperar a que cargue el sistema
-                    page.click("button[type='submit'], input[type='submit']")
-                    page.wait_for_load_state("networkidle")
-                    
-                    # 4. Navegar directamente al reporte de Estado de Resultados ya autenticados
-                    url_reporte = f"https://app.condovive.com/a/eggrld/s/estadoderesultados?m={mes_seleccionado:02d}&a={anio_seleccionado}&presupuesto="
-                    page.goto(url_reporte)
-                    
-                    # Esperar a que la tabla cargue en pantalla
-                    page.wait_for_timeout(3000) # 3 segundos para asegurar renderizado JS
-                    
-                    # Extraer el código HTML completo de la página ya logueada
-                    html_resultado = page.content()
-                    browser.close()
+                # 1. Crear una sesión HTTP para retener las cookies de acceso
+                session = requests.Session()
                 
-                # Procesar el HTML extraído con Pandas
-                if html_resultado:
-                    tablas = pd.read_html(StringIO(html_resultado)) 
+                # Obtener la página de login para extraer tokens de seguridad si los hubiera
+                login_page = session.get("https://app.condovive.com/")
+                
+                # 2. Enviar credenciales de acceso (ajusta las llaves si tu formulario usa otros nombres)
+                login_payload = {
+                    "email": st.secrets["CONDOVIVE_USER"],
+                    "password": st.secrets["CONDOVIVE_PASS"]
+                }
+                
+                # Petición POST para iniciar sesión
+                response_login = session.post("https://app.condovive.com/login.php", data=login_payload)
+                
+                # 3. Calcular fechas del mes seleccionado
+                _, ultimo_dia = calendar.monthrange(anio_seleccionado, mes_seleccionado)
+                fecha_inicio = f"{anio_seleccionado}-{mes_seleccionado:02d}-01"
+                fecha_fin = f"{anio_seleccionado}-{mes_seleccionado:02d}-{ultimo_dia}"
+                
+                url_reporte = "https://app.condovive.com/a/eggrld/s/estadoderesultadosmodaldistshared.php"
+                
+                headers = {
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": f"https://app.condovive.com/a/eggrld/s/estadoderesultados?m={mes_seleccionado:02d}&a={anio_seleccionado}"
+                }
+                
+                payload_reporte = {
+                    "id": "1",
+                    "initialDate": fecha_inicio,
+                    "lastDate": fecha_fin
+                }
+                
+                # 4. Descargar el reporte financiero usando la sesión ya logueada
+                respuesta = session.post(url_reporte, headers=headers, data=payload_reporte)
+                
+                if respuesta.status_code == 200:
+                    tablas = pd.read_html(StringIO(respuesta.text)) 
                     
                     if len(tablas) >= 2:
+                        # Limpieza de Ingresos (Tabla 1)
                         df_ingresos = tablas[0].copy()
                         df_ingresos.columns = ["Concepto", "Monto"]
                         df_ingresos = df_ingresos[df_ingresos["Concepto"] != "Subtotal"]
                         df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"], errors="coerce").fillna(0)
                         
+                        # Limpieza de Egresos (Tabla 2)
                         df_egresos = tablas[1].copy()
                         df_egresos.columns = ["Concepto", "Monto"]
                         df_egresos = df_egresos[df_egresos["Concepto"] != "Subtotal"]
@@ -79,7 +82,7 @@ def mostrar():
                         total_egresos = df_egresos["Monto"].sum()
                         flujo_neto = total_ingresos - total_egresos
 
-                        st.subheader(f"📊 Resumen Automatizado ({fecha_inicio} al {fecha_fin})")
+                        st.subheader(f"📊 Resumen del Mes ({fecha_inicio} al {fecha_fin})")
                         kpi1, kpi2, kpi3 = st.columns(3)
                         kpi1.metric("Ingresos Totales", f"${total_ingresos:,.2f} MXN")
                         kpi2.metric("Egresos Totales", f"${total_egresos:,.2f} MXN")
@@ -101,6 +104,9 @@ def mostrar():
                             fig_balance = px.bar(df_balance, x="Categoría", y="Monto", color="Categoría", color_discrete_sequence=["#28a745", "#dc3545"], text_auto='.2s')
                             st.plotly_chart(fig_balance, use_container_width=True)
                     else:
-                        st.warning("El navegador automático entró con éxito, pero la estructura de la página cambió o no se detectaron las tablas.")
+                        st.warning("La sesión se estableció, pero la respuesta no contiene las tablas financieras esperadas.")
+                else:
+                    st.error(f"Error al solicitar el reporte. Código HTTP: {respuesta.status_code}")
+                    
             except Exception as e:
-                st.error(f"Error en la automatización del navegador: {e}")
+                st.error(f"Ocurrió un error en la conexión: {e}")
