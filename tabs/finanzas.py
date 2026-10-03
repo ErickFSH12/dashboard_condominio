@@ -49,7 +49,6 @@ def mostrar():
             respuesta = requests.post(url, headers=headers, data=payload)
             
             if respuesta.status_code == 200:
-                # 1. Intentar leer como JSON primero
                 try:
                     datos_json = respuesta.json()
                     st.success("Datos recibidos en formato JSON.")
@@ -59,29 +58,35 @@ def mostrar():
                         st.json(datos_json)
                         
                 except json.JSONDecodeError:
-                    # 2. Si no es JSON, intentar extraer tablas HTML
                     try:
                         tablas = pd.read_html(StringIO(respuesta.text)) 
                         if tablas:
-                            st.success(f"Datos obtenidos exitosamente: {fecha_inicio} al {fecha_fin}. Se encontraron {len(tablas)} tablas.")
+                            st.success(f"Datos obtenidos exitosamente. Se encontraron {len(tablas)} tablas.")
                             
-                            # Crear sub-pestañas automáticas para cada tabla que encuentre
+                            # 1. Mostrar las pestañas visuales
                             nombres_tabs = [f"Sección {i+1}" for i in range(len(tablas))]
                             tabs_datos = st.tabs(nombres_tabs)
                             
+                            # 2. Variable para agrupar todo el texto
+                            texto_maestro = ""
+                            
                             for i, tabla in enumerate(tablas):
                                 with tabs_datos[i]:
-                                    st.write(f"**Estructura cruda de la Tabla {i+1}**")
                                     st.dataframe(tabla, use_container_width=True)
-                                    # Genera un cuadro de texto fácil de copiar
-                                    st.code(tabla.to_csv(index=False))
+                                
+                                # Agregar cada tabla al bloque de texto maestro
+                                texto_maestro += f"=== ESTRUCTURA DE LA TABLA {i+1} ===\n"
+                                texto_maestro += tabla.to_csv(index=False)
+                                texto_maestro += "\n\n"
+                            
+                            st.divider()
+                            st.subheader("📋 Bloque de texto para copiar")
+                            st.info("Haz clic en el icono de copiar (esquina superior derecha de este cuadro negro) y pégalo en nuestro chat.")
+                            
+                            # Mostrar un solo cuadro con todo el texto combinado
+                            st.code(texto_maestro, language="text")
+                            
                     except ValueError:
                         st.error("No se detectaron tablas financieras.")
-                        st.warning("⚠️ Diagnóstico: Esto es lo que Condovive respondió realmente. Revisa si es la pantalla de Login (Cookie expirada) o un formato distinto.")
-                        with st.expander("🔍 Ver respuesta cruda del servidor"):
-                            st.code(respuesta.text[:2000])
-                            
             else:
                 st.error(f"Error de conexión HTTP: {respuesta.status_code}")
-                with st.expander("Ver detalles del error"):
-                    st.write(respuesta.text)
