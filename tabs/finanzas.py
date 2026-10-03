@@ -20,8 +20,8 @@ instalar_navegador()
 from playwright.sync_api import sync_playwright
 
 def mostrar():
-    st.header("📈 Dashboard Financiero (Automatizado & Auditado)")
-    st.info("Sistema inteligente con registro de auditoría en vivo.")
+    st.header("📈 Dashboard Financiero (Diagnóstico Profundo)")
+    st.info("Sistema configurado para capturar la estructura completa de los datos.")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -44,7 +44,7 @@ def mostrar():
 
     if btn_consultar:
         st.session_state.log_auditoria = []
-        registrar_log("🚀 Iniciando proceso de consulta financiera.")
+        registrar_log("🚀 Iniciando auditoría profunda de datos.")
         
         _, ultimo_dia = calendar.monthrange(anio_seleccionado, mes_seleccionado)
         fecha_inicio = f"{anio_seleccionado}-{mes_seleccionado:02d}-01"
@@ -54,56 +54,51 @@ def mostrar():
         
         try:
             with sync_playwright() as p:
-                registrar_log("🌐 Lanzando navegador Chromium...")
+                registrar_log("🌐 Lanzando navegador...")
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 
-                registrar_log("🔗 Navegando a la página principal de Condovive...")
                 page.goto("https://app.condovive.com/")
-                
-                registrar_log("🔑 Rellenando credenciales de acceso...")
                 page.fill("input[type='email'], input[name='email'], input[name='username']", st.secrets["CONDOVIVE_USER"])
                 page.fill("input[type='password'], input[name='password']", st.secrets["CONDOVIVE_PASS"])
-                
-                registrar_log("🖱️ Enviando formulario de inicio de sesión...")
                 page.click("button[type='submit'], input[type='submit']")
                 page.wait_for_load_state("networkidle")
-                registrar_log("✅ Inicio de sesión procesado con éxito.")
                 
                 url_reporte = f"https://app.condovive.com/a/eggrld/s/estadoderesultados?m={mes_seleccionado:02d}&a={anio_seleccionado}&presupuesto="
-                registrar_log(f"📂 Navegando directamente al reporte: {url_reporte}")
                 page.goto(url_reporte)
                 
-                # Aumentamos el tiempo de espera a 8 segundos para asegurar que el AJAX/JS cargue los montos
-                registrar_log("⏳ Esperando carga completa de datos asíncronos (8 segundos)...")
-                page.wait_for_timeout(8000)
+                # Espera extendida a 10 segundos
+                registrar_log("⏳ Esperando 10 segundos para asegurar renderizado dinámico...")
+                page.wait_for_timeout(10000)
                 
                 html_resultado = page.content()
-                registrar_log(f"📥 HTML extraído correctamente ({len(html_resultado)} caracteres).")
                 browser.close()
-                registrar_log("🔒 Navegador cerrado de forma segura.")
             
             if html_resultado:
-                registrar_log("📊 Procesando tablas HTML mediante Pandas...")
                 tablas = pd.read_html(StringIO(html_resultado)) 
-                registrar_log(f"🔍 Se detectaron {len(tablas)} tablas en total en la página.")
+                registrar_log(f"🔍 Total de tablas detectadas por Pandas: {len(tablas)}")
                 
                 if len(tablas) >= 2:
                     df_ingresos = tablas[0].copy()
+                    df_egresos = tablas[1].copy()
+                    
+                    # MAGIA DE DIAGNÓSTICO: Imprimir los tipos de datos y las columnas exactas que lee Pandas
+                    registrar_log(f"📌 Columnas Tabla Ingresos: {list(df_ingresos.columns)}")
+                    registrar_log(f"📌 Muestra de valores leídos (Ingresos):\n{df_ingresos.to_string()}")
+                    
+                    registrar_log(f"📌 Columnas Tabla Egresos: {list(df_egresos.columns)}")
+                    registrar_log(f"📌 Muestra de valores leídos (Egresos):\n{df_egresos.to_string()}")
+                    
+                    # Ajuste general de columnas dinámicas
                     cols_ing = list(df_ingresos.columns)
                     cols_ing[0] = "Concepto"
                     cols_ing[-1] = "Monto"
                     df_ingresos.columns = cols_ing
                     
-                    df_egresos = tablas[1].copy()
                     cols_eg = list(df_egresos.columns)
                     cols_eg[0] = "Concepto"
                     cols_eg[-1] = "Monto"
                     df_egresos.columns = cols_eg
-                    
-                    # Registrar un extracto de lo que se leyó antes de limpiar para auditoría
-                    registrar_log(f"📋 Muestra Tabla Ingresos Cruda:\n{df_ingresos.head(3).to_string()}")
-                    registrar_log(f"📋 Muestra Tabla Egresos Cruda:\n{df_egresos.head(3).to_string()}")
 
                     df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
                     df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
@@ -114,7 +109,6 @@ def mostrar():
                     total_ingresos = df_ingresos["Monto"].sum()
                     total_egresos = df_egresos["Monto"].sum()
                     flujo_neto = total_ingresos - total_egresos
-                    registrar_log(f"✨ Totales calculados -> Ingresos: {total_ingresos}, Egresos: {total_egresos}")
 
                     st.subheader(f"📊 Resumen del Mes ({fecha_inicio} al {fecha_fin})")
                     kpi1, kpi2, kpi3 = st.columns(3)
@@ -137,16 +131,13 @@ def mostrar():
                         df_balance = pd.DataFrame({"Categoría": ["Ingresos", "Egresos"], "Monto": [total_ingresos, total_egresos]})
                         fig_balance = px.bar(df_balance, x="Categoría", y="Monto", color="Categoría", color_discrete_sequence=["#28a745", "#dc3545"], text_auto='.2s')
                         st.plotly_chart(fig_balance, use_container_width=True)
-                else:
-                    registrar_log("⚠️ Advertencia: No se encontraron al menos 2 tablas financieras válidas.")
         except Exception as e:
-            error_detalle = traceback.format_exc()
             registrar_log(f"❌ ERROR CRÍTICO: {str(e)}")
             st.error(f"Error en la automatización: {e}")
 
     st.divider()
-    with st.expander("🛠️ Panel de Auditoría y Logs del Sistema", expanded=False):
+    with st.expander("🛠️ Panel de Auditoría y Logs del Sistema", expanded=True):
         if st.session_state.log_auditoria:
             st.code("\n".join(st.session_state.log_auditoria), language="text")
         else:
-            st.info("No hay registros de ejecución recientes. Presiona 'Consultar Estado de Resultados' para iniciar la auditoría.")
+            st.info("Presiona 'Consultar Estado de Resultados' para generar el diagnóstico.")
