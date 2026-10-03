@@ -56,12 +56,12 @@ def mostrar():
                     try:
                         st.dataframe(pd.DataFrame(datos_json), use_container_width=True)
                     except:
-                        st.json(datos_json) # Si no se puede hacer tabla, muestra el JSON crudo
+                        st.json(datos_json)
                         
                 except json.JSONDecodeError:
                     # 2. Si no es JSON, intentar extraer tabla HTML
                     try:
-                        tablas = pd.pd.read_html(StringIO(respuesta.text))
+                        tablas = pd.read_html(StringIO(respuesta.text)) # Corrección aplicada aquí
                         if tablas:
                             st.success(f"Datos obtenidos exitosamente: {fecha_inicio} al {fecha_fin}")
                             st.dataframe(tablas[0], use_container_width=True)
@@ -69,7 +69,7 @@ def mostrar():
                         st.error("No se detectaron tablas financieras.")
                         st.warning("⚠️ Diagnóstico: Esto es lo que Condovive respondió realmente. Revisa si es la pantalla de Login (Cookie expirada) o un formato distinto.")
                         with st.expander("🔍 Ver respuesta cruda del servidor"):
-                            st.code(respuesta.text[:2000]) # Mostramos los primeros 2000 caracteres
+                            st.code(respuesta.text[:2000])
                             
             else:
                 st.error(f"Error de conexión HTTP: {respuesta.status_code}")
