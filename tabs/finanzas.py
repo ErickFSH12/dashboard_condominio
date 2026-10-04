@@ -20,8 +20,8 @@ instalar_navegador()
 from playwright.sync_api import sync_playwright
 
 def mostrar():
-    st.header("📈 Dashboard Financiero (Diagnóstico Profundo)")
-    st.info("Sistema configurado para capturar la estructura completa de los datos.")
+    st.header("📈 Dashboard Financiero (Automatizado)")
+    st.info("Conexión autónoma y procesamiento contable directo.")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -44,7 +44,7 @@ def mostrar():
 
     if btn_consultar:
         st.session_state.log_auditoria = []
-        registrar_log("🚀 Iniciando auditoría profunda de datos.")
+        registrar_log("🚀 Iniciando consulta financiera...")
         
         _, ultimo_dia = calendar.monthrange(anio_seleccionado, mes_seleccionado)
         fecha_inicio = f"{anio_seleccionado}-{mes_seleccionado:02d}-01"
@@ -54,7 +54,6 @@ def mostrar():
         
         try:
             with sync_playwright() as p:
-                registrar_log("🌐 Lanzando navegador...")
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 
@@ -66,9 +65,6 @@ def mostrar():
                 
                 url_reporte = f"https://app.condovive.com/a/eggrld/s/estadoderesultados?m={mes_seleccionado:02d}&a={anio_seleccionado}&presupuesto="
                 page.goto(url_reporte)
-                
-                # Espera extendida a 10 segundos
-                registrar_log("⏳ Esperando 10 segundos para asegurar renderizado dinámico...")
                 page.wait_for_timeout(10000)
                 
                 html_resultado = page.content()
@@ -76,40 +72,33 @@ def mostrar():
             
             if html_resultado:
                 tablas = pd.read_html(StringIO(html_resultado)) 
-                registrar_log(f"🔍 Total de tablas detectadas por Pandas: {len(tablas)}")
                 
                 if len(tablas) >= 2:
                     df_ingresos = tablas[0].copy()
                     df_egresos = tablas[1].copy()
                     
-                    # MAGIA DE DIAGNÓSTICO: Imprimir los tipos de datos y las columnas exactas que lee Pandas
-                    registrar_log(f"📌 Columnas Tabla Ingresos: {list(df_ingresos.columns)}")
-                    registrar_log(f"📌 Muestra de valores leídos (Ingresos):\n{df_ingresos.to_string()}")
+                    # 1. Normalizar nombres de columnas basadas en el diagnóstico
+                    # La primera columna es el concepto, la columna de dinero se llama "Total"
+                    df_ingresos.columns = ["Concepto", "Monto", "Porcentaje"]
+                    df_egresos.columns = ["Concepto", "Monto", "Porcentaje"]
                     
-                    registrar_log(f"📌 Columnas Tabla Egresos: {list(df_egresos.columns)}")
-                    registrar_log(f"📌 Muestra de valores leídos (Egresos):\n{df_egresos.to_string()}")
+                    # 2. Filtrar filas de subtotales y totales generales para no duplicar sumas
+                    palabras_prohibidas = ["Subtotal", "Total", "TOTAL"]
+                    patron = '|'.join(palabras_prohibidas)
                     
-                    # Ajuste general de columnas dinámicas
-                    cols_ing = list(df_ingresos.columns)
-                    cols_ing[0] = "Concepto"
-                    cols_ing[-1] = "Monto"
-                    df_ingresos.columns = cols_ing
-                    
-                    cols_eg = list(df_egresos.columns)
-                    cols_eg[0] = "Concepto"
-                    cols_eg[-1] = "Monto"
-                    df_egresos.columns = cols_eg
-
-                    df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
+                    df_ingresos = df_ingresos[~df_ingresos["Concepto"].astype(str).str.contains(patron, case=False, na=False)]
                     df_ingresos["Monto"] = pd.to_numeric(df_ingresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
                     
-                    df_egresos = df_egresos[~df_egresos["Concepto"].astype(str).str.contains("Subtotal|Total", case=False, na=False)]
+                    df_egresos = df_egresos[~df_egresos["Concepto"].astype(str).str.contains(patron, case=False, na=False)]
                     df_egresos["Monto"] = pd.to_numeric(df_egresos["Monto"].astype(str).str.replace(r'[\$,]', '', regex=True), errors="coerce").fillna(0)
 
                     total_ingresos = df_ingresos["Monto"].sum()
                     total_egresos = df_egresos["Monto"].sum()
                     flujo_neto = total_ingresos - total_egresos
 
+                    registrar_log(f"✨ Montos calculados correctamente -> Ingresos: ${total_ingresos:,.2f} | Egresos: ${total_egresos:,.2f}")
+
+                    # Renderizado Visual
                     st.subheader(f"📊 Resumen del Mes ({fecha_inicio} al {fecha_fin})")
                     kpi1, kpi2, kpi3 = st.columns(3)
                     kpi1.metric("Ingresos Totales", f"${total_ingresos:,.2f} MXN")
@@ -131,13 +120,22 @@ def mostrar():
                         df_balance = pd.DataFrame({"Categoría": ["Ingresos", "Egresos"], "Monto": [total_ingresos, total_egresos]})
                         fig_balance = px.bar(df_balance, x="Categoría", y="Monto", color="Categoría", color_discrete_sequence=["#28a745", "#dc3545"], text_auto='.2s')
                         st.plotly_chart(fig_balance, use_container_width=True)
+                        
+                    with st.expander("🔍 Ver tablas de detalle procesadas"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.write("Ingresos Limpios")
+                            st.dataframe(df_ingresos, use_container_width=True, hide_index=True)
+                        with c2:
+                            st.write("Egresos Limpios")
+                            st.dataframe(df_egresos, use_container_width=True, hide_index=True)
         except Exception as e:
             registrar_log(f"❌ ERROR CRÍTICO: {str(e)}")
             st.error(f"Error en la automatización: {e}")
 
     st.divider()
-    with st.expander("🛠️ Panel de Auditoría y Logs del Sistema", expanded=True):
+    with st.expander("🛠️ Panel de Auditoría y Logs del Sistema", expanded=False):
         if st.session_state.log_auditoria:
             st.code("\n".join(st.session_state.log_auditoria), language="text")
         else:
-            st.info("Presiona 'Consultar Estado de Resultados' para generar el diagnóstico.")
+            st.info("Ejecuta la consulta para ver los registros.")
